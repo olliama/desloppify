@@ -78,6 +78,13 @@ def resolve_import_spec(
             sibling = os.path.join(os.path.dirname(test_path), candidate)
             if sibling in production_files:
                 return sibling
+    # Fallback: unique suffix match — credits imports resolved via sys.path
+    # roots nested below the scan root (e.g. spec "store.admission" matching
+    # "control-api/store/admission.py").
+    for candidate in (f"{module_path}.py", f"{module_path}/__init__.py"):
+        matches = [pf for pf in production_files if pf.endswith("/" + candidate)]
+        if len(matches) == 1:
+            return matches[0]
     return None
 
 

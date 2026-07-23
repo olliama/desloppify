@@ -174,8 +174,6 @@ def naming_based_mapping(
         matched = _map_test_to_source(tf, production_files, lang_name)
         if matched:
             tested.add(matched)
-            continue
-
         basename = os.path.basename(tf)
         src_name = _strip_test_markers(basename, lang_name)
         if src_name and src_name in prod_by_basename:
