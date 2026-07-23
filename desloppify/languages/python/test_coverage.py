@@ -9,12 +9,12 @@ import re
 _PY_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+", re.MULTILINE)
 
 # Import parsing helpers
-# Match both single-line and parenthesized multi-line imports:
+# Match single-line, comma-list, and parenthesized multi-line imports:
 #   from megaplan.evaluation import build_evaluation
-#   from megaplan.evaluation import (build_evaluation, ...)
+#   from megaplan.evaluation import (build_evaluation, score_run)
 #   import megaplan.evaluation
 PY_IMPORT_RE = re.compile(
-    r"^\s*(?:from\s+([\w.]+)\s+import\s+\(?\s*(\w+)|import\s+([\w.]+))",
+    r"^\s*(?:from\s+([\w.]+)\s+import\s+(\([^)]*\)|[^\n]+)|import\s+([^\n]+))",
     re.MULTILINE,
 )
 
@@ -95,25 +95,36 @@ def resolve_barrel_reexports(_filepath: str, _production_files: set[str]) -> set
     return set()
 
 
+def _import_name_tokens(raw: str) -> list[str]:
+    """Split an import name list into bare dotted names (aliases stripped)."""
+    names: list[str] = []
+    for token in raw.strip().strip("()").split(","):
+        name = token.split("#", 1)[0].replace("\\", " ").strip()
+        name = name.split(" as ", 1)[0].strip()
+        if name and re.fullmatch(r"[\w.]+", name):
+            names.append(name)
+    return names
+
+
 def parse_test_import_specs(content: str) -> list[str]:
     """Extract import specs from Python test content.
 
-    For ``from package import name``, emits both ``package`` and
-    ``package.name`` so that submodule imports (e.g.
+    For ``from package import a, b``, emits ``package`` plus
+    ``package.a`` and ``package.b`` so that submodule imports (e.g.
     ``from desloppify.engine._state import filtering``) resolve to
     the submodule file rather than just the package ``__init__.py``.
+    Handles comma lists and parenthesized multi-line imports.
     """
     specs: list[str] = []
     for m in PY_IMPORT_RE.finditer(content):
         if m.group(3):
-            # Plain ``import X.Y.Z``
-            specs.append(m.group(3))
+            # Plain ``import X.Y.Z`` (possibly a comma list)
+            specs.extend(_import_name_tokens(m.group(3)))
         elif m.group(1):
             package = m.group(1)
-            imported_name = m.group(2)
             specs.append(package)
-            if imported_name:
-                specs.append(f"{package}.{imported_name}")
+            for name in _import_name_tokens(m.group(2)):
+                specs.append(f"{package}.{name}")
     return specs
 
 
